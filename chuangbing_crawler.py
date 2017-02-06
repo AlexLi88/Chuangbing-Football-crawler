@@ -56,6 +56,17 @@ class CBCrawler(object):
 		self.s.headers.update(self.sheaders)
 		self.team_list = []
 
+
+		#The urls for ajax request
+		self.match_position = 'http://data.champdas.com/getMatchPositionListAjax.html'
+		self.match_person   = 'http://data.champdas.com/getMatchPersonAjax.html'
+		self.match_static   = 'http://data.champdas.com/getMatchStaticListAjax.html'
+		self.match_attack   = 'http://data.champdas.com/getMatchStaticListAjax.html'
+		self.match_defence  = 'http://data.champdas.com/getMatchDefencesRateAjax.html'
+		self.match_top      = 'http://data.champdas.com/getMatchTopAjax.html'
+
+
+
 	def getTeamLink(self):
 		all_teams_link = "http://data.champdas.com/team/rank-1-2016.html"
 		html = _urlRequest(all_teams_link)
@@ -97,10 +108,6 @@ class CBCrawler(object):
 			print res_data[0]['index']
 
 
-
-
-
-
 	def getRoundLink(self):
 		html = _urlRequest(self.start_url)
 		soup = BeautifulSoup("".join(html), "lxml")
@@ -123,7 +130,17 @@ class CBCrawler(object):
 			link = self.url_prefix + a['href'].encode('ascii', 'ignore')
 			print link
 
+	def getGameDetail(self, link):
+		#First get game id   
+		game_id = link.split('-')[1]
+		game_id = game_id.replace('.html', '')
+
+		print game_id
+
 if __name__ == '__main__':
 	myCrawler = CBCrawler("http://data.champdas.com/match/scheduleDetail-1-2016-1.html")
-	myCrawler.getTeamLink()
-	myCrawler.getTeamPlayer()
+	myCrawler.getRoundLink()
+	myCrawler.getGameLink(myCrawler.round_list[0])
+	myCrawler.getGameDetail('http://data.champdas.com/match/data-2241.html')
+	#myCrawler.getTeamLink()
+	#myCrawler.getTeamPlayer()
