@@ -36,10 +36,24 @@ def _urlRequest(request_url):
 
 
 
+def _postRequest(session, url, data):
+	body_value = urllib.urlencode(data)
+	res = session.post(url, data = body_value)
+	return res
+
+
+
+
 class CBCrawler(object):
 	def __init__(self, start_url):
 		self.start_url = start_url
 		self.url_prefix = "http://data.champdas.com"
+		self.s = requests.Session()
+		self.sheaders = {
+						'Content-Type':'application/x-www-form-urlencoded; charset=UTF-8',
+						'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.98 Safari/537.36',
+						}
+		self.s.headers.update(self.sheaders)
 		self.team_list = []
 
 	def getTeamLink(self):
@@ -63,7 +77,28 @@ class CBCrawler(object):
 			except Exception as e:
 				print "error", e
 
-		print self.team_list
+		#print self.team_list
+
+
+
+	def getTeamPlayer(self):
+		for team in self.team_list:
+			print team['link']
+			team_data = team['link'].split('-')
+			league_id = 1
+			season = 2016
+			team_id = int(team_data[1])
+			data = {'leagueId':league_id, 'teamId': team_id, 'season': season}
+			res = _postRequest(self.s, 'http://data.champdas.com/team/getPersonDataForTeam/index.html', data)
+			res_data = json.loads(res.text)
+
+
+			#get all players in the team   
+			print res_data[0]['index']
+
+
+
+
 
 
 	def getRoundLink(self):
@@ -91,3 +126,4 @@ class CBCrawler(object):
 if __name__ == '__main__':
 	myCrawler = CBCrawler("http://data.champdas.com/match/scheduleDetail-1-2016-1.html")
 	myCrawler.getTeamLink()
+	myCrawler.getTeamPlayer()
