@@ -5,12 +5,18 @@ import requests
 import urllib
 import urllib2 as url
 from bs4 import BeautifulSoup
+from pymongo import MongoClient
 import os
 import json
 import sys
 import zlib
 import logging
 from random import randint
+
+
+#Connect to local Mongo Database
+client = MongoClient()
+db = client.chuangbing
 
 
 request_headers = {
@@ -21,6 +27,32 @@ request_headers = {
 	'Connection': 'keep-alive',
 	'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/54.0.2840.98 Safari/537.36'
 }
+
+stat = {'shoot': '0',
+		'shoot_in_target': '90',
+		'shoot_off_target': '500',
+		'assist': '78',
+		'key_pass': '504',
+		'center_ball': '9',
+		'break_through': '86',
+		'free_kick': '10',
+		'interception': '26',
+		'contain': '28',
+		'block': '32',
+		'goal_keeper_save': '502',
+		'block_pass': '204',
+		'block_shoot': '205',
+		'foul': '21',
+		'cards': ['24', '25', '117']
+		}
+
+def _getAllStats(tp):
+	if tp == 'offense':
+		return [stat['shoot'], stat['shoot_in_target'], stat['shoot_off_target'], stat['assist'], stat['key_pass'], stat['center_ball'], stat['break_through'], stat['free_kick']]
+	elif tp == 'defense':
+		return [stat['interception'], stat['contain'], stat['block'], stat['goal_keeper_save'], stat['block_pass'], stat['block_shoot'], stat['foul']]+ stat['cards']
+	else:
+		return [stat['shoot'], stat['shoot_in_target'], stat['shoot_off_target'], stat['assist'], stat['key_pass'], stat['center_ball'], stat['break_through'], stat['free_kick'], stat['interception'], stat['contain'], stat['block'], stat['goal_keeper_save'], stat['block_pass'], stat['block_shoot'], stat['foul']] + stat['cards']
 
 
 def _urlRequest(request_url):
@@ -103,9 +135,18 @@ class CBCrawler(object):
 			res = _postRequest(self.s, 'http://data.champdas.com/team/getPersonDataForTeam/index.html', data)
 			res_data = json.loads(res.text)
 
+			 
+			#res_data[0]['index']['team'] = {'teamName': team['name'], 'year': 2016}
+			#get all players in the team
+			for player_data in res_data[0]['index']:
+				player_data['team'] = [{'teamName': team['name'], 'year': 2016}]
 
-			#get all players in the team   
-			print res_data[0]['index']
+				#print json.dumps(player_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+				inser_db_result = db.players.insert_one(player_data)
+				print inser_db_result 
+
+
+			#print res_data[0]['index']
 
 
 	def getRoundLink(self):
@@ -118,29 +159,103 @@ class CBCrawler(object):
 			a = li.find('a')
 			link = self.url_prefix + a['href'].encode('ascii', 'ignore')
 			self.round_list.append(link)
-		# print self.round_list
+	
 
 	def getGameLink(self, round_link):
 		html = _urlRequest(round_link)
 		soup = BeautifulSoup("".join(html), "lxml")
 		against = soup.find('div', class_="against")
 		lis = against.find_all('li')
+		rnd_games_list = []
 		for li in lis:
 			a = li.find('span').find('a')
 			link = self.url_prefix + a['href'].encode('ascii', 'ignore')
-			print link
+			rnd_games_list.append(link)
+		
+		return rnd_games_list
 
 	def getGameDetail(self, link):
 		#First get game id   
+		print link
 		game_id = link.split('-')[1]
 		game_id = game_id.replace('.html', '')
-
 		print game_id
+
+		#Get players attend in this match
+		data = {'matchId': game_id}
+		res = _postRequest(self.s, 'http://data.champdas.com/getMatchPersonAjax.html', data)
+		players_data = json.loads(res.text)
+
+		player_id_list = []
+		for player in players_data:
+			player_id_list.append(str(player['personId']))
+
+
+		#get the right format for posting trace data
+		player_post_data = ",".join("'" + player + "'" for player in player_id_list)
+		#print player_post_data
+		code_list = _getAllStats('all')
+		code_post_data = ",".join("'" + code + "'" for code in code_list)
+		#print code_post_data
+		trace_post_data = {'matchId': game_id, 'half': 0, 'personId': player_post_data, 'code': code_post_data}
+		res = _postRequest(self.s, 'http://data.champdas.com/getTraceAjax.html', trace_post_data)
+		trace_res_data = json.loads(res.text)
+		#print json.dumps(trace_res_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+
+		match_stat_post_data = {'matchId': game_id, 'half': ''}
+		res = _postRequest(self.s, 'http://data.champdas.com/getMatchStaticListAjax.html', match_stat_post_data)
+		match_stat_res_data = json.loads(res.text)
+		# print json.dumps(match_stat_res_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+
+		match_att_post_data = {'matchId': game_id, 'half': ''}
+		res = _postRequest(self.s, 'http://data.champdas.com/getMatchAttackAjax.html', match_att_post_data)
+		match_att_res_data = json.loads(res.text)
+		# print json.dumps(match_att_res_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+
+		match_def_post_data = {'matchId': game_id, 'half': ''}
+		res = _postRequest(self.s, 'http://data.champdas.com/getMatchDefencesRateAjax.html', match_def_post_data)
+		match_def_res_data = json.loads(res.text)
+		# print json.dumps(match_def_res_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+
+		match_pos_post_data = {'matchId': game_id, 'half': 0}
+		res = _postRequest(self.s, 'http://data.champdas.com/getMatchPositionListAjax.html', match_pos_post_data)
+		match_pos_res_data = json.loads(res.text)
+		#print json.dumps(match_pos_res_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+
+
+
+		db_data = {}
+		db_data['playerList'] = match_pos_res_data
+		db_data['matchId'] = game_id
+		db_data['events'] = trace_res_data
+		db_data['stats'] = match_stat_res_data
+		db_data['stats_att'] = match_att_res_data
+		db_data['stats_def'] = match_def_res_data
+
+		
+		inser_db_result = db.matches.insert_one(db_data)
+		print inser_db_result
+
+		#print json.dumps(db_data, indent=4, separators=(',', ': '), ensure_ascii=False, encoding="utf-8")
+
+		
 
 if __name__ == '__main__':
 	myCrawler = CBCrawler("http://data.champdas.com/match/scheduleDetail-1-2016-1.html")
 	myCrawler.getRoundLink()
-	myCrawler.getGameLink(myCrawler.round_list[0])
-	myCrawler.getGameDetail('http://data.champdas.com/match/data-2241.html')
+	for rnd in myCrawler.round_list:
+		rnd_games_list = myCrawler.getGameLink(rnd)
+		for game in rnd_games_list:
+			myCrawler.getGameDetail(game)
+			
+
+
+
+	#Get players in each team and save players' data to mongodb   
 	#myCrawler.getTeamLink()
 	#myCrawler.getTeamPlayer()
